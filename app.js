@@ -1,15 +1,15 @@
-const express = require('express');
+const express = require("express");
 const app = express();
-const { graphqlHTTP } = require('express-graphql');
+const { graphqlHTTP } = require("express-graphql");
 const {
   GraphQLObjectType,
   GraphQLString,
   GraphQLList,
   GraphQLSchema,
   GraphQLScalarType,
-} = require('graphql');
-const fetch = require('node-fetch');
-const jsdom = require('jsdom');
+} = require("graphql");
+const fetch = require("node-fetch");
+const jsdom = require("jsdom");
 
 const { JSDOM } = jsdom;
 const seedData = {
@@ -19,11 +19,12 @@ const seedData = {
 };
 
 const mentionRegex = /\B@\w+/g;
+const emoticonRegex = /\((.*?)\)/g;
 const urlRegex =
   /(?:(?:https?|ftp|file):\/\/|www\.|ftp\.)(?:\([-A-Z0-9+&@#\/%=~_|$?!:,.]*\)|[-A-Z0-9+&@#\/%=~_|$?!:,.])*(?:\([-A-Z0-9+&@#\/%=~_|$?!:,.]*\)|[A-Z0-9+&@#\/%=~_|$])/gim;
 
 const linkType = new GraphQLObjectType({
-  name: 'Links',
+  name: "Links",
   fields: () => ({
     urls: { type: GraphQLString },
     title: { type: GraphQLString },
@@ -31,8 +32,8 @@ const linkType = new GraphQLObjectType({
 });
 
 const recordType = new GraphQLObjectType({
-  name: 'Records',
-  description: 'Records',
+  name: "Records",
+  description: "Records",
   fields: {
     mentions: {
       type: new GraphQLList(GraphQLString),
@@ -47,8 +48,8 @@ const recordType = new GraphQLObjectType({
 });
 
 const rootQuery = new GraphQLObjectType({
-  name: 'RootQuery',
-  description: 'This is rootQuery',
+  name: "RootQuery",
+  description: "This is rootQuery",
   fields: {
     records: {
       type: new GraphQLList(recordType),
@@ -66,19 +67,23 @@ const rootQuery = new GraphQLObjectType({
         }
 
         // emoticons
-        const matchedEmoticons = message
-          .match(/\((.*?)\)/g)
-          .map((b) => b.replace(/\(|(.*?)\)/g, '$1'));
-        if (matchedEmoticons && matchedEmoticons.length) {
-          seedData.emoticons = matchedEmoticons.filter(
-            (emote) => emote.length <= 15
-          );
+        if (
+          message.match(emoticonRegex)
+        ) {
+          const matchedEmoticons = message
+            .match(emoticonRegex)
+            .map((b) => b.replace(/\(|(.*?)\)/g, "$1"));
+            if (matchedEmoticons && matchedEmoticons.length) {
+              seedData.emoticons = matchedEmoticons.filter(
+                (emote) => emote.length <= 15
+              );
+            }
         }
 
         // urls
         seedData.links = [];
         const matchedUrls = message.match(urlRegex);
-        if (matchedUrls && matchedUrls.length) {
+        if (message.match(urlRegex) && matchedUrls && matchedUrls.length) {
           try {
             const data = await Promise.all(
               matchedUrls.map((url) => getTitle(url))
@@ -86,7 +91,7 @@ const rootQuery = new GraphQLObjectType({
             seedData.links = data;
             return Promise.resolve(seedData);
           } catch (error) {
-            return Promise.reject('Unable to fetch links');
+            return Promise.reject("Unable to fetch links");
           }
         }
         return Promise.resolve(seedData);
@@ -102,26 +107,26 @@ async function getTitle(url) {
     );
     if (response.ok) {
       const data = await response.json();
-      console.log('response :: ', data);
-      const dom = new JSDOM(data.contents, { conntentType: 'text/html' });
+      // console.log('response :: ', data);
+      const dom = new JSDOM(data.contents, { conntentType: "text/html" });
       const title =
-        dom.window.document.querySelectorAll('title')[0].textContent;
+        dom.window.document.querySelectorAll("title")[0].textContent;
       return Promise.resolve({
         url,
         title,
       });
     } else {
-      return Promise.reject('Network response was not ok.');
+      return Promise.reject("Network response was not ok.");
     }
   } catch (error) {
-    return Promise.reject('Unable to fetch url title.');
+    return Promise.reject("Unable to fetch url title.");
   }
 }
 
 const schema = new GraphQLSchema({ query: rootQuery });
 
 app.use(
-  '/graphql',
+  "/graphql",
   graphqlHTTP({
     schema,
     graphiql: true,
