@@ -1,30 +1,29 @@
-const express = require("express");
+const express = require('express');
 const app = express();
-const { graphqlHTTP } = require("express-graphql");
+const { graphqlHTTP } = require('express-graphql');
 const {
   GraphQLObjectType,
   GraphQLString,
   GraphQLList,
   GraphQLSchema,
   GraphQLScalarType,
-} = require("graphql");
-const fetch = require("node-fetch");
-const jsdom = require("jsdom");
-const { JSDOM } = jsdom;
+} = require('graphql');
+const fetch = require('node-fetch');
+const jsdom = require('jsdom');
 
-let seedData = {
+const { JSDOM } = jsdom;
+const seedData = {
   mentions: [],
   emoticons: [],
-  links: [linkObj],
+  links: [],
 };
 
-var linkObj = {
-  urls: "",
-  title: "",
-};
+const mentionRegex = /\B@\w+/g;
+const urlRegex =
+  /(?:(?:https?|ftp|file):\/\/|www\.|ftp\.)(?:\([-A-Z0-9+&@#\/%=~_|$?!:,.]*\)|[-A-Z0-9+&@#\/%=~_|$?!:,.])*(?:\([-A-Z0-9+&@#\/%=~_|$?!:,.]*\)|[A-Z0-9+&@#\/%=~_|$])/gim;
 
 const linkType = new GraphQLObjectType({
-  name: "Links",
+  name: 'Links',
   fields: () => ({
     urls: { type: GraphQLString },
     title: { type: GraphQLString },
@@ -32,8 +31,8 @@ const linkType = new GraphQLObjectType({
 });
 
 const recordType = new GraphQLObjectType({
-  name: "Records",
-  description: "Records",
+  name: 'Records',
+  description: 'Records',
   fields: {
     mentions: {
       type: new GraphQLList(GraphQLString),
@@ -48,8 +47,8 @@ const recordType = new GraphQLObjectType({
 });
 
 const rootQuery = new GraphQLObjectType({
-  name: "RootQuery",
-  description: "This is rootQuery",
+  name: 'RootQuery',
+  description: 'This is rootQuery',
   fields: {
     records: {
       type: new GraphQLList(recordType),
@@ -60,30 +59,34 @@ const rootQuery = new GraphQLObjectType({
         message: { type: GraphQLString },
       },
       resolve: async (_, { message }) => {
-        let mentionregEx = /\B@\w+/g;
-        let mentions = message.match(mentionregEx);
-        if (mentions && mentions.length) {
-          seedData.mentions = [...mentions];
+        // mentions
+        const matchedMentions = message.match(mentionRegex);
+        if (matchedMentions && matchedMentions.length) {
+          seedData.mentions = [...matchedMentions];
         }
-        let emoticonRegex = message
+
+        // emoticons
+        const matchedEmoticons = message
           .match(/\((.*?)\)/g)
-          .map((b) => b.replace(/\(|(.*?)\)/g, "$1"));
-        if (emoticonRegex && emoticonRegex.length) {
-          seedData.emoticons = emoticonRegex.filter(emote => emote.length <= 15)
+          .map((b) => b.replace(/\(|(.*?)\)/g, '$1'));
+        if (matchedEmoticons && matchedEmoticons.length) {
+          seedData.emoticons = matchedEmoticons.filter(
+            (emote) => emote.length <= 15
+          );
         }
-        let urlRegex = message.match(
-          /(?:(?:https?|ftp|file):\/\/|www\.|ftp\.)(?:\([-A-Z0-9+&@#\/%=~_|$?!:,.]*\)|[-A-Z0-9+&@#\/%=~_|$?!:,.])*(?:\([-A-Z0-9+&@#\/%=~_|$?!:,.]*\)|[A-Z0-9+&@#\/%=~_|$])/gim
-        );
+
+        // urls
         seedData.links = [];
-        if (urlRegex && urlRegex.length) {
+        const matchedUrls = message.match(urlRegex);
+        if (matchedUrls && matchedUrls.length) {
           try {
             const data = await Promise.all(
-              urlRegex.map((url) => getTitle(url))
+              matchedUrls.map((url) => getTitle(url))
             );
             seedData.links = data;
             return Promise.resolve(seedData);
           } catch (error) {
-            return Promise.reject("Unable to fetch links");
+            return Promise.reject('Unable to fetch links');
           }
         }
         return Promise.resolve(seedData);
@@ -92,27 +95,33 @@ const rootQuery = new GraphQLObjectType({
   },
 });
 
-function getTitle(url) {
-  return fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(url)}`)
-    .then((response) => {
-      if (response.ok) return response.json();
-      throw new Error("Network response was not ok.");
-    })
-    .then((data) => {
-      const dom = new JSDOM(data.contents, { conntentType: "text/html" });
+async function getTitle(url) {
+  try {
+    const response = await fetch(
+      `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`
+    );
+    if (response.ok) {
+      const data = await response.json();
+      console.log('response :: ', data);
+      const dom = new JSDOM(data.contents, { conntentType: 'text/html' });
       const title =
-        dom.window.document.querySelectorAll("title")[0].textContent;
-      linkObj.urls = url;
-      linkObj.title = title;
-      seedData.links.push(linkObj);
-      return linkObj;
-    });
+        dom.window.document.querySelectorAll('title')[0].textContent;
+      return Promise.resolve({
+        url,
+        title,
+      });
+    } else {
+      return Promise.reject('Network response was not ok.');
+    }
+  } catch (error) {
+    return Promise.reject('Unable to fetch url title.');
+  }
 }
 
 const schema = new GraphQLSchema({ query: rootQuery });
 
 app.use(
-  "/graphql",
+  '/graphql',
   graphqlHTTP({
     schema,
     graphiql: true,
